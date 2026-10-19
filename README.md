@@ -1,26 +1,74 @@
 # NiGeNje λ-Safe Compiler UI
 
-A browser-based interface for the free, open-source λ-Safe compiler. The UI uses the public HTTP API supplied by `lambda-safe-service`; it does not embed compiler logic or enterprise-only integrations.
+A browser-based interface for the free, open-source λ-Safe compiler. The UI talks only to the documented public HTTP API of `lambda-safe-service`. Compiler logic and hard-certification semantics live in the backend repository.
 
-## Run the integrated stack
+## One-command stack
 
-The canonical local-development and demo stack is maintained by the backend repository:
+Clone this repository beside the backend repository:
 
 ```bash
+mkdir lambda-safe-stack && cd lambda-safe-stack
 git clone https://github.com/GeorgeOnchaba/lambda-safe.git
+git clone https://github.com/GeorgeOnchaba/lambda-safe-fe.git
 cd lambda-safe
+mkdir -p secrets
+openssl rand -hex 32 > secrets/lambda-safe-api-token
+chmod 600 secrets/lambda-safe-api-token
 docker compose up --build
 ```
 
-Open <http://localhost:3000>. The UI proxies API calls to the backend over the private Compose network; the backend is not published to the host by default.
+Open http://localhost:3000. The backend is not published to the host; UI server proxies requests across the private Docker network and attaches the service bearer token. The token must remain outside Git and should be replaced for each deployment.
 
-## API
+PowerShell token generation:
 
-The UI expects the free API routes documented in the backend repository: `GET /healthz`, `GET /readyz`, `GET /v1/info`, `POST /v1/check`, `POST /v1/compile`, and `POST /v1/certificates/verify`.
+```powershell
+New-Item -ItemType Directory -Force secrets | Out-Null
+$bytes = New-Object byte[] 32
+[System.Security.Cryptography.RandomNumberGenerator]::Fill($bytes)
+$token = [Convert]::ToHexString($bytes).ToLowerInvariant()
+[System.IO.File]::WriteAllText((Join-Path (Get-Location) 'secrets/lambda-safe-api-token'), $token)
+```
 
-## Open-source boundary
+## Local UI development
 
-This repository contains only the open UI. It must not depend on private packages, unpublished endpoints, hosted credentials, or enterprise-only services. Treat every displayed certificate as scoped to the contract and compiler version described by the API; a certificate is not a blanket runtime-safety guarantee.
+Requires Node.js 22+ and npm.
+
+```bash
+npm install
+npm run dev
+```
+
+The Vite dev server proxies `/healthz`, `/readyz` and `/v1/*` to `http://compiler:8080` by default. Outside Compose, set `LAMBDA_SAFE_API_TARGET` to a reachable compiler API. The development proxy does not load the Compose secret automatically; use a local compiler running on loopback without a service token, or provide your own trusted development proxy.
+
+## What it supports
+
+- Health and compiler identity display.
+- λ-language, JSON projection and auto-detect request formats.
+- Static checks and solver-backed compilation.
+- Sample valid and failing contracts.
+- Diagnostics and full API response inspection.
+- Manifest and certificate views and JSON export.
+- Artifact integrity/binding verification using the documented backend endpoint.
+
+The interface clearly distinguishes compiler output from the stronger claims it does not establish. The integrity/binding verifier is not a substitute for recompiling through a trusted toolchain.
+
+## Development commands
+
+```bash
+npm run build
+npm test
+```
+
+## Public API contract
+
+- `GET /healthz`
+- `GET /readyz`
+- `GET /v1/info`
+- `POST /v1/check`
+- `POST /v1/compile`
+- `POST /v1/certificates/verify`
+
+No private packages, hosted credentials, commercial API endpoints, or enterprise-only integration contracts are part of this UI.
 
 ## License
 
