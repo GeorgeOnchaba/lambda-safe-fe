@@ -64,7 +64,7 @@ describe("λ-Safe compiler UI", () => {
     render(<App />);
     await waitFor(() => expect(screen.getByText(/Compiler online/i)).toBeTruthy());
     fireEvent.click(screen.getByRole("button", { name: /Compile contract/i }));
-    await waitFor(() => expect(screen.getByText(/INDETERMINATE/i)).toBeTruthy());
+    await waitFor(() => expect(screen.getByText("INDETERMINATE", { selector: ".status-pill" })).toBeTruthy());
     expect(screen.getByText(/A manifest appears here only after successful hard certification/i)).toBeTruthy();
   });
 });
