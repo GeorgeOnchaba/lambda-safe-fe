@@ -4,12 +4,10 @@ A browser-based interface for the free, open-source λ-Safe compiler. The UI tal
 
 ## One-command stack
 
-Clone this repository beside the backend repository:
+The backend repository owns the Compose file and builds this UI from its independent public Git repository. You do not need to clone the frontend separately or combine the repositories:
 
 ```bash
-mkdir lambda-safe-stack && cd lambda-safe-stack
 git clone https://github.com/GeorgeOnchaba/lambda-safe.git
-git clone https://github.com/GeorgeOnchaba/lambda-safe-fe.git
 cd lambda-safe
 mkdir -p secrets
 openssl rand -hex 32 > secrets/lambda-safe-api-token
@@ -17,7 +15,7 @@ chmod 600 secrets/lambda-safe-api-token
 docker compose up --build
 ```
 
-Open http://localhost:3000. The backend is not published to the host; UI server proxies requests across the private Docker network and attaches the service bearer token. The token must remain outside Git and should be replaced for each deployment.
+Open http://localhost:3001. The backend is not published to the host; the UI server proxies requests across the private Docker network and attaches the service bearer token server-side. The browser never receives the token. Keep the token outside Git and generate a unique one for each environment.
 
 PowerShell token generation:
 
