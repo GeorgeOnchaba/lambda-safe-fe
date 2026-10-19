@@ -1,15 +1,15 @@
 # NiGeNje λ-Safe Compiler UI
 
-A browser-based interface for the free, open-source λ-Safe compiler. The UI talks only to the documented public HTTP API of `lambda-safe-service`. Compiler logic and hard-certification semantics live in the backend repository.
+A browser-based interface for the free, open-source λ-Safe compiler. The UI talks only to the documented HTTP API of `lambda-safe-service`; compiler logic and hard-certification semantics remain in the separate backend repository.
 
-## One-command stack
+## Run the complete stack
 
-Clone this repository beside the backend repository:
+The canonical one-file Docker Compose configuration lives in the backend repository. The repositories remain independent; Compose fetches this UI repository as a remote build context, so a sibling checkout is not required.
+
+Clone the backend repository:
 
 ```bash
-mkdir lambda-safe-stack && cd lambda-safe-stack
 git clone https://github.com/GeorgeOnchaba/lambda-safe.git
-git clone https://github.com/GeorgeOnchaba/lambda-safe-fe.git
 cd lambda-safe
 mkdir -p secrets
 openssl rand -hex 32 > secrets/lambda-safe-api-token
@@ -17,9 +17,9 @@ chmod 600 secrets/lambda-safe-api-token
 docker compose up --build
 ```
 
-Open http://localhost:3000. The backend is not published to the host; UI server proxies requests across the private Docker network and attaches the service bearer token. The token must remain outside Git and should be replaced for each deployment.
+Open **http://localhost:3000**.
 
-PowerShell token generation:
+PowerShell alternative for token creation:
 
 ```powershell
 New-Item -ItemType Directory -Force secrets | Out-Null
@@ -27,7 +27,12 @@ $bytes = New-Object byte[] 32
 [System.Security.Cryptography.RandomNumberGenerator]::Fill($bytes)
 $token = [Convert]::ToHexString($bytes).ToLowerInvariant()
 [System.IO.File]::WriteAllText((Join-Path (Get-Location) 'secrets/lambda-safe-api-token'), $token)
+docker compose up --build
 ```
+
+The compiler port is not published to the host. The UI server proxies requests across the private Docker network and attaches the service Bearer token server-side; the browser never receives the token. The token file must remain outside Git and should be unique to each environment.
+
+**Compose configuration change status:** the backend repository's single-file remote-frontend build is proposed in [PR #16](https://github.com/GeorgeOnchaba/lambda-safe/pull/16). Until that PR is merged, the current backend `main` branch still expects this UI repository to be checked out as a sibling at `../lambda-safe-fe`.
 
 ## Local UI development
 
@@ -38,7 +43,7 @@ npm install
 npm run dev
 ```
 
-The Vite dev server proxies `/healthz`, `/readyz` and `/v1/*` to `http://compiler:8080` by default. Outside Compose, set `LAMBDA_SAFE_API_TARGET` to a reachable compiler API. The development proxy does not load the Compose secret automatically; use a local compiler running on loopback without a service token, or provide your own trusted development proxy.
+The Vite dev server proxies `/healthz`, `/readyz` and `/v1/*` to `http://localhost:8080` by default. Set `LAMBDA_SAFE_API_TARGET` to a reachable compiler API when needed. The Vite development proxy does not load the Docker Compose secret automatically; use a local compiler running on loopback without a service token, or provide your own trusted development proxy.
 
 ## What it supports
 
@@ -50,7 +55,7 @@ The Vite dev server proxies `/healthz`, `/readyz` and `/v1/*` to `http://compile
 - Manifest and certificate views and JSON export.
 - Artifact integrity/binding verification using the documented backend endpoint.
 
-The interface clearly distinguishes compiler output from the stronger claims it does not establish. The integrity/binding verifier is not a substitute for recompiling through a trusted toolchain.
+The interface distinguishes compiler output from stronger claims it does not establish. Integrity/binding verification is not a substitute for recompiling through a trusted toolchain.
 
 ## Development commands
 
