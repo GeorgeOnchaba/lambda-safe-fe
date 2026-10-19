@@ -11,5 +11,9 @@ export default defineConfig({
       "/v1": { target: process.env.LAMBDA_SAFE_API_TARGET ?? "http://localhost:8080" }
     }
   },
-  preview: { host: "0.0.0.0" }
+  preview: { host: "0.0.0.0" },
+  test: {
+    environment: "jsdom",
+    globals: true
+  }
 });
