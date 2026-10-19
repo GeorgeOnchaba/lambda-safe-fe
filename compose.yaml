@@ -1,0 +1,80 @@
+name: lambda-safe-local
+
+services:
+  compiler:
+    image: lambda-safe-compiler:local
+    build:
+      # Build the compiler from its own independent repository; never copy it
+      # into the frontend source tree.
+      context: https://github.com/GeorgeOnchaba/lambda-safe.git#main
+      dockerfile: Dockerfile
+    environment:
+      LAMBDA_SAFE_BIND: 0.0.0.0:8080
+      LAMBDA_SAFE_API_TOKEN: ${LAMBDA_SAFE_API_TOKEN:-local-only-change-this-token-before-sharing}
+      LAMBDA_SAFE_API_TOKEN_FILE: /tmp/lambda-safe-api-token
+      LAMBDA_SAFE_SOLVER: z3
+      LAMBDA_SAFE_Z3_PATH: /usr/bin/z3
+      RUST_LOG: info
+    # The compiler expects a token file. Create it at startup with restrictive
+    # permissions; credentials are not baked into either image.
+    entrypoint: ["/bin/sh", "-ec"]
+    command:
+      - |
+        umask 077
+        printf '%s' "$$LAMBDA_SAFE_API_TOKEN" > "$$LAMBDA_SAFE_API_TOKEN_FILE"
+        exec /usr/local/bin/lambda-safe-service
+    expose:
+      - "8080"
+    networks:
+      - lambda-safe-internal
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=1m,mode=1777
+    cap_drop:
+      - ALL
+
+  frontend:
+    image: lambda-safe-fe:local
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: 8080
+      LAMBDA_SAFE_API_TARGET: http://compiler:8080
+      LAMBDA_SAFE_API_TOKEN: ${LAMBDA_SAFE_API_TOKEN:-local-only-change-this-token-before-sharing}
+      LAMBDA_SAFE_API_TOKEN_FILE: /tmp/lambda-safe-api-token
+    entrypoint: ["/bin/sh", "-ec"]
+    command:
+      - |
+        umask 077
+        printf '%s' "$$LAMBDA_SAFE_API_TOKEN" > "$$LAMBDA_SAFE_API_TOKEN_FILE"
+        exec node server.mjs
+    ports:
+      - "${LAMBDA_SAFE_FE_PORT:-3000}:8080"
+    depends_on:
+      - compiler
+    networks:
+      - lambda-safe-internal
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=1m,mode=1777
+    cap_drop:
+      - ALL
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8080/healthz').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+
+networks:
+  lambda-safe-internal:
+    driver: bridge
