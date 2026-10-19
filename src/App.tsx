@@ -64,7 +64,9 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let body: unknown;
   try { body = raw ? JSON.parse(raw) : {}; }
   catch { body = { message: raw || response.statusText }; }
-  if (!response.ok && response.status !== 409 && response.status !== 422 && response.status !== 503) {
+  // Compiler domain failures carry structured diagnostics; transport/proxy
+  // failures remain exceptions so they are surfaced separately from results.
+  if (!response.ok && ![409, 422, 503].includes(response.status)) {
     const message = (body as { message?: string }).message ?? response.statusText;
     throw new Error(`${response.status} ${message}`);
   }
@@ -119,7 +121,9 @@ export default function App() {
         body: JSON.stringify({ source: { format, content: source } })
       });
       setResult(response);
-      setActiveTab(action === "compile" ? "manifest" : "diagnostics");
+      setActiveTab(action === "compile" && response.artifacts?.manifest
+        ? "manifest"
+        : action === "compile" ? "result" : "diagnostics");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Request failed.");
     } finally {
