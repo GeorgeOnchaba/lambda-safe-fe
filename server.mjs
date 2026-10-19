@@ -20,114 +20,116 @@ const mime = {
   ".woff2": "font/woff2"
 };
 
-function readToken() {
+function loadToken() {
   try {
-    const value = fs.readFileSync(tokenPath, "utf8").trim();
-    if (value.length < 32 || !/^[\x21-\x7e]+$/.test(value)) {
-      throw new Error("token must contain at least 32 visible ASCII characters");
+    const token = fs.readFileSync(tokenPath, "utf8").trim();
+    if (token.length < 32 || !/^[\x21-\x7e]+$/.test(token)) {
+      throw new Error("token must be at least 32 visible ASCII characters");
     }
-    return value;
+    return token;
   } catch (error) {
     if (process.env.NODE_ENV !== "production" && !fs.existsSync(tokenPath)) return null;
-    throw new Error(`Cannot load API token (${tokenPath}): ${error.message}`);
+    throw new Error(`unable to load API token: ${error.message}`);
   }
 }
 
 let token;
 try {
-  token = readToken();
+  token = loadToken();
 } catch (error) {
   console.error(error.message);
   process.exit(70);
 }
 
 const server = http.createServer(async (req, res) => {
-  const pathname = new URL(req.url ?? "/", "http://localhost").pathname;
+  const requestUrl = new URL(req.url ?? "/", "http://localhost");
+  const pathname = requestUrl.pathname;
 
   if (pathname === "/healthz") {
-    res.writeHead(200, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
+    res.writeHead(200, {
+      "content-type": "application/json; charset=utf-8",
+      "cache-control": "no-store",
+      "x-content-type-options": "nosniff"
+    });
     res.end(JSON.stringify({ status: "ok", service: "lambda-safe-ui" }));
     return;
   }
 
-  if (["/healthz", "/readyz"].includes(pathname) || pathname.startsWith("/v1/")) {
+  if (pathname === "/readyz" || pathname.startsWith("/v1/")) {
     if (!["GET", "POST"].includes(req.method ?? "")) {
-      res.writeHead(405, { "content-type": "application/json", allow: "GET, POST" });
+      res.writeHead(405, { "content-type": "application/json", "allow": "GET, POST" });
       res.end(JSON.stringify({ message: "method not allowed" }));
       return;
     }
-    let body;
+
     try {
       const chunks = [];
       let size = 0;
       for await (const chunk of req) {
         size += chunk.length;
         if (size > 1_300_000) {
-          res.writeHead(413, { "content-type": "application/json" });
+          res.writeHead(413, { "content-type": "application/json", "cache-control": "no-store" });
           res.end(JSON.stringify({ code: "UI-PROXY-413", message: "request body too large" }));
           return;
         }
         chunks.push(chunk);
       }
-      body = Buffer.concat(chunks);
+
+      const body = Buffer.concat(chunks);
       const headers = {};
       if (req.headers["content-type"]) headers["content-type"] = req.headers["content-type"];
       if (token) headers.authorization = `Bearer ${token}`;
-      if (body.length > 0) headers["content-length"] = String(body.length);
 
-      const upstream = await fetch(new URL(pathname + new URL(req.url ?? "/", "http://localhost").search, apiTarget), {
+      const upstream = await fetch(new URL(pathname + requestUrl.search, apiTarget), {
         method: req.method,
         headers,
-        body: body.length > 0 && req.method !== "GET" ? body : undefined,
+        body: body.length && req.method !== "GET" ? body : undefined,
         signal: AbortSignal.timeout(35_000)
       });
-      const data = Buffer.from(await upstream.arrayBuffer());
+      const contentType = upstream.headers.get("content-type") ?? "application/json; charset=utf-8";
+      const responseBody = Buffer.from(await upstream.arrayBuffer());
       res.writeHead(upstream.status, {
-        "content-type": upstream.headers.get("content-type") ?? "application/json; charset=utf-8",
+        "content-type": contentType,
         "cache-control": "no-store",
         "x-content-type-options": "nosniff"
       });
-      res.end(data);
-      return;
+      res.end(responseBody);
     } catch (error) {
-      console.error("Compiler API proxy failed:", error.message);
+      console.error("compiler API proxy failed:", error.message);
       res.writeHead(502, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
       res.end(JSON.stringify({ code: "UI-PROXY-502", message: "compiler API unavailable" }));
-      return;
     }
+    return;
   }
 
-  const requestPath = pathname === "/" ? "/index.html" : pathname;
-  const resolved = path.resolve(dist, "." + requestPath);
-  if (!resolved.startsWith(dist + path.sep) && resolved !== path.join(dist, "index.html")) {
+  const relativePath = pathname === "/" ? "/index.html" : pathname;
+  const filePath = path.resolve(dist, "." + relativePath);
+  if (!filePath.startsWith(dist + path.sep)) {
     res.writeHead(403);
     res.end("forbidden");
     return;
   }
 
-  let filePath = resolved;
+  let servePath = filePath;
   try {
-    const stat = fs.statSync(filePath);
-    if (!stat.isFile()) throw new Error("not a file");
+    if (!fs.statSync(servePath).isFile()) throw new Error("not a file");
   } catch {
-    // SPA fallback for client-side routes; unknown assets still return HTML only
-    // for paths that do not include a file extension.
     if (path.extname(pathname)) {
-      res.writeHead(404, { "content-type": "text/plain; charset=utf-8" });
+      res.writeHead(404, { "content-type": "text/plain; charset=utf-8", "x-content-type-options": "nosniff" });
       res.end("not found");
       return;
     }
-    filePath = path.join(dist, "index.html");
+    servePath = path.join(dist, "index.html");
   }
 
   try {
-    const content = fs.readFileSync(filePath);
+    const content = fs.readFileSync(servePath);
     res.writeHead(200, {
-      "content-type": mime[path.extname(filePath)] ?? "application/octet-stream",
+      "content-type": mime[path.extname(servePath)] ?? "application/octet-stream",
       "x-content-type-options": "nosniff",
       "referrer-policy": "no-referrer",
       "content-security-policy": "default-src 'self'; connect-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; script-src 'self'; base-uri 'none'; frame-ancestors 'none'",
-      "cache-control": filePath.endsWith("index.html") ? "no-store" : "public, max-age=31536000, immutable"
+      "cache-control": servePath.endsWith("index.html") ? "no-store" : "public, max-age=31536000, immutable"
     });
     res.end(content);
   } catch {
