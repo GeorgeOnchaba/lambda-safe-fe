@@ -11,19 +11,21 @@ git clone https://github.com/GeorgeOnchaba/lambda-safe.git
 cd lambda-safe
 mkdir -p secrets
 openssl rand -hex 32 > secrets/lambda-safe-api-token
-chmod 600 secrets/lambda-safe-api-token
+chmod 644 secrets/lambda-safe-api-token
 docker compose up --build
 ```
 
-Open http://localhost:3001. The backend is not published to the host; the UI server proxies requests across the private Docker network and attaches the service bearer token server-side. The browser never receives the token. Keep the token outside Git and generate a unique one for each environment.
+Open http://localhost:3001. The backend is not published to the host; the UI server proxies requests across the private Docker network and attaches the service bearer token server-side. The browser never receives the token. Keep the token outside Git and generate a unique one for each environment. On Linux, file-backed Compose secrets keep the host file mode and both containers run as UID 10001, so the demo token must be readable by that UID (`0644`).
 
-PowerShell token generation:
+PowerShell token generation (works in Windows PowerShell 5.1 and PowerShell 7+):
 
 ```powershell
 New-Item -ItemType Directory -Force secrets | Out-Null
 $bytes = New-Object byte[] 32
-[System.Security.Cryptography.RandomNumberGenerator]::Fill($bytes)
-$token = [Convert]::ToHexString($bytes).ToLowerInvariant()
+$rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+$rng.GetBytes($bytes)
+$rng.Dispose()
+$token = -join ($bytes | ForEach-Object { $_.ToString('x2') })
 [System.IO.File]::WriteAllText((Join-Path (Get-Location) 'secrets/lambda-safe-api-token'), $token)
 ```
 
