@@ -26,17 +26,20 @@ type CompilerInfo = {
 const DEFAULT_CONTRACT = `lambda_safe "0.1";
 contract capacity_guard version "1" {
   unit count;
+  const replicas_max: int<count> = 8;
+  const zero: int<count> = 0;
   input replicas: int<count> authority control_plane range [1, 8];
-  assume replicas_positive hard: replicas >= 1;
-  invariant replicas_bounded hard: replicas <= 8;
+  assume replicas_nonnegative hard: replicas >= zero;
+  invariant replicas_bounded hard: replicas <= replicas_max;
 }`;
 
 const SAMPLE_COUNTEREXAMPLE = `lambda_safe "0.1";
 contract unsafe_capacity version "1" {
   unit count;
+  const zero: int<count> = 0;
   input replicas: int<count> authority control_plane range [1, 8];
-  assume replicas_positive hard: replicas >= 1;
-  invariant replicas_must_be_zero hard: replicas == 0;
+  assume replicas_nonnegative hard: replicas >= zero;
+  invariant replicas_must_be_zero hard: replicas == zero;
 }`;
 
 function pretty(value: unknown): string {
